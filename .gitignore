@@ -26,6 +26,7 @@ pip-log.txt
 .coverage
 .tox
 nosetests.xml
+coverage.xml
 
 # Translations
 *.mo
@@ -36,5 +37,13 @@ nosetests.xml
 .pydevproject
 
 venv
+.venv/
 app.db
 microblog.log*
+logs/
+
+# IDE / tooling
+.idea/
+.scannerwork/
+.sonar/
+.DS_Store
