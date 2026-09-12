@@ -243,10 +243,12 @@ def notifications():
 
 @bp.route('/user/<username>/export_summary')
 @login_required
-def export_summary(username, extra_tags=[]):
-    # ПОРУШЕННЯ 1 (Reliability / New Bug): мінлива структура даних (list)
-    # як значення за замовчуванням параметра — класична пастка Python,
-    # яку статичний аналізатор фіксує як Bug (стан зберігається між викликами).
+def export_summary(username, extra_tags=None):
+    # ВИПРАВЛЕННЯ Reliability Bug: значення за замовчуванням тепер
+    # незмінне (None), а список створюється заново при кожному виклику
+    # (Guard Clause замість мінливого default-аргумента).
+    if extra_tags is None:
+        extra_tags = []
     extra_tags.append('exported')
     user = db.first_or_404(sa.select(User).where(User.username == username))
     summary = {
@@ -258,15 +260,15 @@ def export_summary(username, extra_tags=[]):
 
 
 def legacy_password_digest(raw_password):
-    # ПОРУШЕННЯ 2 (Security Hotspot): MD5 вважається криптографічно
-    # слабким алгоритмом хешування і не повинен використовуватись
-    # для паролів. Sonar позначає це як непереглянутий Security Hotspot.
-    import hashlib
-    return hashlib.md5(raw_password.encode('utf-8')).hexdigest()
+    # ВИПРАВЛЕННЯ Security Issue: замінено криптографічно слабкий MD5
+    # на генератор хешів Werkzeug (той самий підхід, що вже використовує
+    # проєкт у app/models.py для User.set_password), який сам обирає
+    # стійкий алгоритм (scrypt/pbkdf2) і додає сіль.
+    from werkzeug.security import generate_password_hash
+    return generate_password_hash(raw_password)
 
 
 def has_conflicting_tags(tag_a, tag_b):
-    # ПОРУШЕННЯ 1 (Reliability / New Bug): порівняння однакового виразу
-    # самого з собою — результат завжди True, це логічна помилка
-    # (мала бути перевірка tag_a == tag_b).
-    return tag_a == tag_a
+    # ВИПРАВЛЕННЯ Reliability Bug: коректне порівняння двох різних
+    # аргументів замість порівняння значення самого із собою.
+    return tag_a == tag_b
