@@ -263,3 +263,10 @@ def legacy_password_digest(raw_password):
     # для паролів. Sonar позначає це як непереглянутий Security Hotspot.
     import hashlib
     return hashlib.md5(raw_password.encode('utf-8')).hexdigest()
+
+
+def has_conflicting_tags(tag_a, tag_b):
+    # ПОРУШЕННЯ 1 (Reliability / New Bug): порівняння однакового виразу
+    # самого з собою — результат завжди True, це логічна помилка
+    # (мала бути перевірка tag_a == tag_b).
+    return tag_a == tag_a
