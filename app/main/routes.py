@@ -239,3 +239,36 @@ def notifications():
         'data': n.get_data(),
         'timestamp': n.timestamp
     } for n in notifications]
+
+
+@bp.route('/user/<username>/export_summary')
+@login_required
+def export_summary(username, extra_tags=None):
+    # ВИПРАВЛЕННЯ Reliability Bug: значення за замовчуванням тепер
+    # незмінне (None), а список створюється заново при кожному виклику
+    # (Guard Clause замість мінливого default-аргумента).
+    if extra_tags is None:
+        extra_tags = []
+    extra_tags.append('exported')
+    user = db.first_or_404(sa.select(User).where(User.username == username))
+    summary = {
+        'username': user.username,
+        'posts_count': user.posts_count(),
+        'tags': extra_tags,
+    }
+    return summary
+
+
+def legacy_password_digest(raw_password):
+    # ВИПРАВЛЕННЯ Security Issue: замінено криптографічно слабкий MD5
+    # на генератор хешів Werkzeug (той самий підхід, що вже використовує
+    # проєкт у app/models.py для User.set_password), який сам обирає
+    # стійкий алгоритм (scrypt/pbkdf2) і додає сіль.
+    from werkzeug.security import generate_password_hash
+    return generate_password_hash(raw_password)
+
+
+def has_conflicting_tags(tag_a, tag_b):
+    # ВИПРАВЛЕННЯ Reliability Bug: коректне порівняння двох різних
+    # аргументів замість порівняння значення самого із собою.
+    return tag_a == tag_b

@@ -29,9 +29,20 @@ babel = Babel()
 
 
 def create_app(config_class=Config):
+    # РЕФАКТОРИНГ (Завд.4): Cognitive Complexity знижено з 18 до ~2
+    # шляхом Extract Method — логіку розбито на три незалежні кроки.
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    _init_extensions(app)
+    _register_blueprints(app)
+    _configure_logging(app)
+
+    return app
+
+
+def _init_extensions(app):
+    """Ініціалізація Flask-розширень (Extract Method)."""
     db.init_app(app)
     migrate.init_app(app, db)
     login.init_app(app)
@@ -43,6 +54,9 @@ def create_app(config_class=Config):
     app.redis = Redis.from_url(app.config['REDIS_URL'])
     app.task_queue = rq.Queue('microblog-tasks', connection=app.redis)
 
+
+def _register_blueprints(app):
+    """Реєстрація blueprint-ів (Extract Method)."""
     from app.errors import bp as errors_bp
     app.register_blueprint(errors_bp)
 
@@ -58,42 +72,56 @@ def create_app(config_class=Config):
     from app.api import bp as api_bp
     app.register_blueprint(api_bp, url_prefix='/api')
 
-    if not app.debug and not app.testing:
-        if app.config['MAIL_SERVER']:
-            auth = None
-            if app.config['MAIL_USERNAME'] or app.config['MAIL_PASSWORD']:
-                auth = (app.config['MAIL_USERNAME'],
-                        app.config['MAIL_PASSWORD'])
-            secure = None
-            if app.config['MAIL_USE_TLS']:
-                secure = ()
-            mail_handler = SMTPHandler(
-                mailhost=(app.config['MAIL_SERVER'], app.config['MAIL_PORT']),
-                fromaddr='no-reply@' + app.config['MAIL_SERVER'],
-                toaddrs=app.config['ADMINS'], subject='Microblog Failure',
-                credentials=auth, secure=secure)
-            mail_handler.setLevel(logging.ERROR)
-            app.logger.addHandler(mail_handler)
 
-        if app.config['LOG_TO_STDOUT']:
-            stream_handler = logging.StreamHandler()
-            stream_handler.setLevel(logging.INFO)
-            app.logger.addHandler(stream_handler)
-        else:
-            if not os.path.exists('logs'):
-                os.mkdir('logs')
-            file_handler = RotatingFileHandler('logs/microblog.log',
-                                               maxBytes=10240, backupCount=10)
-            file_handler.setFormatter(logging.Formatter(
-                '%(asctime)s %(levelname)s: %(message)s '
-                '[in %(pathname)s:%(lineno)d]'))
-            file_handler.setLevel(logging.INFO)
-            app.logger.addHandler(file_handler)
+def _configure_logging(app):
+    """Налаштування логування. Guard Clause прибирає перший рівень
+    вкладеності: у debug/testing-режимі логування не потрібне."""
+    if app.debug or app.testing:
+        return
 
-        app.logger.setLevel(logging.INFO)
-        app.logger.info('Microblog startup')
+    _configure_mail_logging(app)
+    _configure_file_or_stdout_logging(app)
 
-    return app
+    app.logger.setLevel(logging.INFO)
+    app.logger.info('Microblog startup')
+
+
+def _configure_mail_logging(app):
+    """Guard Clause замість вкладеного if — email-логування (Extract Method)."""
+    if not app.config['MAIL_SERVER']:
+        return
+
+    auth = None
+    if app.config['MAIL_USERNAME'] or app.config['MAIL_PASSWORD']:
+        auth = (app.config['MAIL_USERNAME'], app.config['MAIL_PASSWORD'])
+    secure = () if app.config['MAIL_USE_TLS'] else None
+
+    mail_handler = SMTPHandler(
+        mailhost=(app.config['MAIL_SERVER'], app.config['MAIL_PORT']),
+        fromaddr='no-reply@' + app.config['MAIL_SERVER'],
+        toaddrs=app.config['ADMINS'], subject='Microblog Failure',
+        credentials=auth, secure=secure)
+    mail_handler.setLevel(logging.ERROR)
+    app.logger.addHandler(mail_handler)
+
+
+def _configure_file_or_stdout_logging(app):
+    """Guard Clause замість if/else — файлове чи stdout логування (Extract Method)."""
+    if app.config['LOG_TO_STDOUT']:
+        stream_handler = logging.StreamHandler()
+        stream_handler.setLevel(logging.INFO)
+        app.logger.addHandler(stream_handler)
+        return
+
+    if not os.path.exists('logs'):
+        os.mkdir('logs')
+    file_handler = RotatingFileHandler('logs/microblog.log',
+                                       maxBytes=10240, backupCount=10)
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s %(levelname)s: %(message)s '
+        '[in %(pathname)s:%(lineno)d]'))
+    file_handler.setLevel(logging.INFO)
+    app.logger.addHandler(file_handler)
 
 
 from app import models
