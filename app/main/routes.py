@@ -239,3 +239,27 @@ def notifications():
         'data': n.get_data(),
         'timestamp': n.timestamp
     } for n in notifications]
+
+
+@bp.route('/user/<username>/export_summary')
+@login_required
+def export_summary(username, extra_tags=[]):
+    # ПОРУШЕННЯ 1 (Reliability / New Bug): мінлива структура даних (list)
+    # як значення за замовчуванням параметра — класична пастка Python,
+    # яку статичний аналізатор фіксує як Bug (стан зберігається між викликами).
+    extra_tags.append('exported')
+    user = db.first_or_404(sa.select(User).where(User.username == username))
+    summary = {
+        'username': user.username,
+        'posts_count': user.posts_count(),
+        'tags': extra_tags,
+    }
+    return summary
+
+
+def legacy_password_digest(raw_password):
+    # ПОРУШЕННЯ 2 (Security Hotspot): MD5 вважається криптографічно
+    # слабким алгоритмом хешування і не повинен використовуватись
+    # для паролів. Sonar позначає це як непереглянутий Security Hotspot.
+    import hashlib
+    return hashlib.md5(raw_password.encode('utf-8')).hexdigest()
