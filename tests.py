@@ -1,8 +1,11 @@
 #!/usr/bin/env python
 from datetime import datetime, timezone, timedelta
 import unittest
+from unittest.mock import patch, MagicMock
+import requests
 from app import create_app, db
 from app.models import User, Post
+from app.translate import translate
 from config import Config
 
 
@@ -100,6 +103,87 @@ class UserModelCase(unittest.TestCase):
         self.assertEqual(f2, [p2, p3])
         self.assertEqual(f3, [p3, p4])
         self.assertEqual(f4, [p4])
+
+
+
+
+class TranslateResilienceTestCase(unittest.TestCase):
+    """
+    ЛР№2, Завдання 3: автоматизована верифікація стійкості translate().
+
+    Зовнішній сервіс перекладу підміняється через unittest.mock (test
+    double) — тест НЕ залежить від доступності реального Azure API чи
+    локального mock_translator.py, тому детермінований і стабільний
+    при повторних запусках.
+    """
+
+    def setUp(self):
+        self.app = create_app(TestConfig)
+        self.app.config['MS_TRANSLATOR_KEY'] = 'dummy-key-for-tests'
+        self.app.config['TRANSLATOR_API_URL'] = \
+            'http://mock-translator.test/translate'
+        self.app_context = self.app.app_context()
+        self.app_context.push()
+        # test_request_context потрібен, бо flask_babel._() всередині
+        # fallback-гілки translate() визначає locale через request.
+        self.request_context = self.app.test_request_context()
+        self.request_context.push()
+
+    def tearDown(self):
+        self.request_context.pop()
+        self.app_context.pop()
+
+    @patch('app.translate.requests.post')
+    def test_translate_success_no_fallback(self, mock_post):
+        # ПОЗИТИВНА ПЕРЕВІРКА: зовнішній сервіс відповідає нормально ->
+        # fallback НЕ активується, зайвих retry немає.
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {'translations': [{'text': 'Привіт'}]}]
+        mock_post.return_value = mock_response
+
+        result = translate('Hello', 'en', 'uk')
+
+        self.assertEqual(result, 'Привіт')
+        self.assertEqual(mock_post.call_count, 1)
+
+    @patch('app.translate.time.sleep', return_value=None)
+    @patch('app.translate.requests.post')
+    def test_translate_timeout_triggers_fallback(self, mock_post, mock_sleep):
+        # RESILIENCE TEST: зовнішня залежність постійно "висне" (timeout).
+        mock_post.side_effect = requests.exceptions.Timeout()
+
+        result = translate('Hello', 'en', 'uk')
+
+        self.assertIn('Hello', result)
+        self.assertIn('translation unavailable', result)
+        self.assertEqual(mock_post.call_count, 3)  # рівно MAX_RETRIES
+
+    @patch('app.translate.time.sleep', return_value=None)
+    @patch('app.translate.requests.post')
+    def test_translate_http_500_triggers_fallback(self, mock_post, mock_sleep):
+        # RESILIENCE TEST: зовнішня залежність постійно повертає HTTP 500.
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_post.return_value = mock_response
+
+        result = translate('Hello', 'en', 'uk')
+
+        self.assertIn('translation unavailable', result)
+        self.assertEqual(mock_post.call_count, 3)
+
+    @patch('app.translate.time.sleep', return_value=None)
+    @patch('app.translate.requests.post')
+    def test_translate_connection_error_triggers_fallback(
+            self, mock_post, mock_sleep):
+        # RESILIENCE TEST: зовнішня залежність недоступна (ConnectionError).
+        mock_post.side_effect = requests.exceptions.ConnectionError()
+
+        result = translate('Hello', 'en', 'uk')
+
+        self.assertIn('translation unavailable', result)
+        self.assertEqual(mock_post.call_count, 3)
 
 
 if __name__ == '__main__':
