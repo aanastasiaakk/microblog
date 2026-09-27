@@ -47,3 +47,4 @@ logs/
 .scannerwork/
 .sonar/
 .DS_Store
+.env
