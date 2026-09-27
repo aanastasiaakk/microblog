@@ -2,8 +2,9 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 
 // ЛР№2, Завдання 1: сценарій ПІДВИЩЕНОГО навантаження на /translate
-// (той самий SLO, але суттєво більше одночасних користувачів ->
-// демонструє реальне вузьке місце: однопотоковий Flask dev-сервер)
+// (той самий SLO, але суттєво більше одночасних користувачів і без
+// пауз між запитами -> демонструє реальне вузьке місце: однопотоковий
+// Flask dev-сервер, що обробляє запити практично послідовно)
 const BASE_URL = 'http://localhost:5000';
 const USERNAME = __ENV.K6_USERNAME || 'testuser';
 const PASSWORD = __ENV.K6_PASSWORD || 'testpass123';
@@ -14,8 +15,8 @@ export const options = {
       executor: 'ramping-vus',
       startVUs: 5,
       stages: [
-        { duration: '10s', target: 50 },
-        { duration: '20s', target: 50 },
+        { duration: '10s', target: 200 },
+        { duration: '25s', target: 200 },
         { duration: '10s', target: 0 },
       ],
     },
@@ -48,6 +49,5 @@ export default function () {
   });
 
   check(res, { 'status is 200': (r) => r.status === 200 });
-
-  sleep(0.2);
+  // без sleep() -> кожен VU одразу шле наступний запит, максимальний тиск
 }
