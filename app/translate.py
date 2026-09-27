@@ -11,11 +11,16 @@ def translate(text, source_language, dest_language):
         'Ocp-Apim-Subscription-Key': current_app.config['MS_TRANSLATOR_KEY'],
         'Ocp-Apim-Subscription-Region': 'westus'
     }
+    # РЕЗІЛЬЄНТНІСТЬ (Завд.1 ЛР2, baseline): URL зовнішнього сервісу
+    # винесено в конфігурацію (TRANSLATOR_API_URL), щоб у dev/тестовому
+    # середовищі підміняти справжній Azure Translator локальним
+    # mock-сервером (mock_translator.py) для навантажувального
+    # тестування та fault injection.
     r = requests.post(
-        'https://api.cognitive.microsofttranslator.com'
-        '/translate?api-version=3.0&from={}&to={}'.format(
+        current_app.config['TRANSLATOR_API_URL'] +
+        '?api-version=3.0&from={}&to={}'.format(
             source_language, dest_language), headers=auth, json=[
-                {'Text': text}])
+                {'Text': text}], timeout=2)
     if r.status_code != 200:
         return _('Error: the translation service failed.')
     return r.json()[0]['translations'][0]['text']
